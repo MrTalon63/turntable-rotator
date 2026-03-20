@@ -1,11 +1,16 @@
 #include <Arduino.h>
 #include <FastAccelStepper.h>
+#include <TMCStepper.h>
 
-#define DIR_PIN 5
-#define STEP_PIN 6
+#define AZ_DIR_PIN 5
+#define AZ_STEP_PIN 6
+#define AZ_EN_PIN 2137
+#define AZ_CS_PIN 2137
+#define R_SENSE 0.11f // Idfk that's what is in example
 
+TMC2130Stepper azDriver(AZ_CS_PIN, R_SENSE);
 FastAccelStepperEngine engine = FastAccelStepperEngine();
-FastAccelStepper *stepper = NULL;
+FastAccelStepper *azStepper = NULL;
 
 void setup() {
   Serial.begin(115200);
@@ -13,18 +18,30 @@ void setup() {
   Serial.println("Setting up...");
   Serial.println("ESP SDK version: " + String(esp_get_idf_version()));
 
+  SPI.begin();
+  azDriver.begin();
+  azDriver.toff(5);
+  azDriver.rms_current(600); // mA
+  azDriver.microsteps(16);
+
+  // Enable sum fancy shit, allegedly stepper should be silky smooth
+  azDriver.en_pwm_mode(true);
+  azDriver.pwm_autoscale(true);
+
   engine.init();
   Serial.println("Engine initialized.");
-  stepper = engine.stepperConnectToPin(STEP_PIN, DRIVER_I2S_DIRECT);
-  if (stepper) {
+  azStepper = engine.stepperConnectToPin(AZ_STEP_PIN, DRIVER_I2S_DIRECT);
+
+  if (azStepper) {
     Serial.println("Stepper connected to pin.");
   } else {
     Serial.println("Failed to connect stepper to pin.");
     while (1); // Halt execution
   }
-  stepper->setDirectionPin(DIR_PIN);
-  stepper->setSpeedInUs(10);
-  stepper->setAcceleration(1000);
+
+  azStepper->setDirectionPin(AZ_DIR_PIN);
+  azStepper->setSpeedInUs(10);
+  azStepper->setAcceleration(1000);
 }
 
 void loop() {
@@ -34,7 +51,7 @@ void loop() {
     int space = input.indexOf(' ');
     String command;
     String value;
-    if (space) {
+    if (!space) {
       command = input; //no val
       value = "";
     } else {
@@ -47,50 +64,50 @@ void loop() {
     if (command == "f" || command == "forward") {
       if (value.isEmpty()) {
         Serial.println("Moving forward...");
-        stepper->runForward();
+        azStepper->runForward();
       } else {
         uint32_t steps = value.toInt();
         Serial.println("Moving forward " + String(steps) + " steps...");
-        stepper->move(steps);
+        azStepper->move(steps);
       }
 
     } else if (command == "b" || command == "backward") {
       if (value.isEmpty()) {
         Serial.println("Moving backward...");
-        stepper->runBackward();
+        azStepper->runBackward();
       } else {
         uint32_t steps = value.toInt();
         Serial.println("Moving backward " + String(steps) + " steps...");
-        stepper->move(-steps);
+        azStepper->move(-steps);
       }
 
     } else if (command == "s" || command == "speed") {
       if (value.isEmpty()) {
-        Serial.println("Current speed: " + String(stepper->getCurrentSpeedInUs()) + " us/step.");
+        Serial.println("Current speed: " + String(azStepper->getCurrentSpeedInUs()) + " us/step.");
       } else {
         uint32_t speed = value.toInt();
-        stepper->setSpeedInUs(speed);
+        azStepper->setSpeedInUs(speed);
         Serial.println("Speed set to " + String(speed) + " us/step.");
       }
 
     } else if (command == "a" || command == "acceleration") {
       if (value.isEmpty()) {
-        Serial.println("Current acceleration: " + String(stepper->getAcceleration()) + " steps/s^2.");
+        Serial.println("Current acceleration: " + String(azStepper->getAcceleration()) + " steps/s^2.");
       } else {
         uint32_t accel = value.toInt();
-        stepper->setAcceleration(accel);
+        azStepper->setAcceleration(accel);
         Serial.println("Acceleration set to " + String(accel) + " steps/s^2.");
       }
 
     } else if (command == "l" || command == "stop") {
       Serial.println("Stopping...");
-      stepper->stopMove();
+      azStepper->stopMove();
 
     } else if (command == "status") {
       Serial.println("Current status:");
-      Serial.println("  Speed: " + String(stepper->getCurrentSpeedInUs()) + " us/step");
-      Serial.println("  Acceleration: " + String(stepper->getAcceleration()) + " steps/s^2");
-      Serial.println("  Current position: " + String(stepper->getCurrentPosition()) + " steps");
+      Serial.println("  Speed: " + String(azStepper->getCurrentSpeedInUs()) + " us/step");
+      Serial.println("  Acceleration: " + String(azStepper->getAcceleration()) + " steps/s^2");
+      Serial.println("  Current position: " + String(azStepper->getCurrentPosition()) + " steps");
     
     } else if (command == "h" || command == "help") {
       Serial.println("Available commands:");
